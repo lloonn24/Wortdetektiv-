@@ -1,0 +1,248 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wortdetektiv</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        .screen {
+            display: none;
+        }
+        .visible {
+            display: block;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .category-list button {
+            display: inline-block;
+            margin: 5px;
+            padding: 10px;
+            background: #ddd;
+            border: none;
+            border-radius: 5px;
+        }
+        .category-list button.selected {
+            background: #4CAF50;
+            color: white;
+        }
+        input, select {
+            padding: 10px;
+            margin: 5px;
+            font-size: 16px;
+        }
+        .player-inputs {
+            margin: 20px 0;
+        }
+        .word-table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        .word-table th, .word-table td {
+            border: 1px solid #aaa;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-screen" class="screen visible">
+        <h1>Wortdetektiv</h1>
+        <p>Wie viele Spieler?</p>
+        <select id="player-count">
+            <option value="3">3 Spieler</option>
+            <option value="4">4 Spieler</option>
+            <option value="5">5 Spieler</option>
+            <option value="6">6 Spieler</option>
+        </select>
+        <button onclick="goToNameEntry()">Weiter</button>
+    </div>
+
+    <div id="name-entry-screen" class="screen">
+        <h2>Spielernamen eingeben</h2>
+        <div id="name-inputs"></div>
+        <button onclick="goToCategorySelection()">Weiter zu Kategorien</button>
+    </div>
+
+    <div id="category-selection-screen" class="screen">
+        <h2>Kategorien auswählen</h2>
+        <div class="category-list" id="category-buttons"></div>
+        <p>Anzahl Kategorien pro Runde:</p>
+        <select id="category-count">
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="5">5</option>
+        </select>
+        <br>
+        <button onclick="selectRandomCategories()">Zufällige Kategorien starten</button>
+    </div>
+
+    <div id="word-entry-screen" class="screen">
+        <h2 id="current-player-heading"></h2>
+        <div id="category-word-inputs"></div>
+        <button onclick="submitPlayerWords()">Fertig</button>
+    </div>
+
+    <div id="puzzle-screen" class="screen">
+        <h2>Rätselrunde – Wer hat was geschrieben?</h2>
+        <table class="word-table" id="puzzle-table"></table>
+        <button onclick="revealAnswers()">Auflösen</button>
+    </div>
+
+    <div id="reveal-screen" class="screen">
+        <h2>Auflösung</h2>
+        <table class="word-table" id="reveal-table"></table>
+    </div>
+
+    <script>
+        const categories = [
+            "Urlaubsziel", "Farbe", "Tier", "Film", "Lied / Song", "Promi / Berühmtheit", "Schulfach",
+            "Geheime Superkraft", "Peinliches Hobby", "Ich wäre ein … (Gegenstand)",
+            "Das würde ich auf eine einsame Insel mitnehmen", "Ich hasse …",
+            "Mein erster Gedanke heute Morgen", "Ich bin süchtig nach …",
+            "Lieblings-Meme", "Videospielcharakter", "TikTok-Trend", "Emoji, der mich beschreibt",
+            "Seriencharakter", "Fiktive Figur, mit der ich tauschen würde"
+        ];
+
+        let playerCount = 3;
+        let players = [];
+        let selectedCategories = [];
+        let roundCategories = [];
+        let currentPlayerIndex = 0;
+        let wordsByPlayer = {};
+        let finalAssignments = {};
+
+        function goToNameEntry() {
+            playerCount = parseInt(document.getElementById("player-count").value);
+            const nameInputs = document.getElementById("name-inputs");
+            nameInputs.innerHTML = "";
+            for (let i = 0; i < playerCount; i++) {
+                nameInputs.innerHTML += `<input type="text" placeholder="Spieler ${i+1}" id="player-name-${i}"><br>`;
+            }
+            showScreen("name-entry-screen");
+        }
+
+        function goToCategorySelection() {
+            players = [];
+            for (let i = 0; i < playerCount; i++) {
+                const name = document.getElementById(`player-name-${i}`).value.trim();
+                players.push(name || `Spieler ${i+1}`);
+            }
+            const catButtons = document.getElementById("category-buttons");
+            catButtons.innerHTML = "";
+            categories.forEach(cat => {
+                const btn = document.createElement("button");
+                btn.textContent = cat;
+                btn.onclick = () => {
+                    btn.classList.toggle("selected");
+                };
+                catButtons.appendChild(btn);
+            });
+            showScreen("category-selection-screen");
+        }
+
+        function selectRandomCategories() {
+            const selected = Array.from(document.querySelectorAll(".category-list button.selected")).map(btn => btn.textContent);
+            const count = parseInt(document.getElementById("category-count").value);
+            if (selected.length < count) {
+                alert("Bitte mehr Kategorien auswählen!");
+                return;
+            }
+            selectedCategories = selected;
+            roundCategories = [];
+            while (roundCategories.length < count) {
+                const rand = selected[Math.floor(Math.random() * selected.length)];
+                if (!roundCategories.includes(rand)) roundCategories.push(rand);
+            }
+            currentPlayerIndex = 0;
+            wordsByPlayer = {};
+            showWordInputForPlayer();
+        }
+
+        function showWordInputForPlayer() {
+            const playerName = players[currentPlayerIndex];
+            document.getElementById("current-player-heading").textContent = `Spieler: ${playerName}`;
+            const inputs = document.getElementById("category-word-inputs");
+            inputs.innerHTML = "";
+            roundCategories.forEach(cat => {
+                inputs.innerHTML += `<p>${cat}<br><input type="text" id="input-${cat.replace(/[^a-zA-Z0-9]/g, '')}"></p>`;
+            });
+            showScreen("word-entry-screen");
+        }
+
+        function submitPlayerWords() {
+            const playerName = players[currentPlayerIndex];
+            wordsByPlayer[playerName] = {};
+            roundCategories.forEach(cat => {
+                const inputId = `input-${cat.replace(/[^a-zA-Z0-9]/g, '')}`;
+                wordsByPlayer[playerName][cat] = document.getElementById(inputId).value.trim();
+            });
+            currentPlayerIndex++;
+            if (currentPlayerIndex < players.length) {
+                showWordInputForPlayer();
+            } else {
+                assignWords();
+            }
+        }
+
+        function assignWords() {
+            finalAssignments = {};
+            roundCategories.forEach(cat => {
+                const wordPool = players.map(p => ({player: p, word: wordsByPlayer[p][cat]}));
+                for (let p of players) {
+                    let choice;
+                    do {
+                        choice = wordPool[Math.floor(Math.random() * wordPool.length)];
+                    } while (choice.player === p || finalAssignments[p]?.[cat]);
+                    finalAssignments[p] = finalAssignments[p] || {};
+                    finalAssignments[p][cat] = choice.word;
+                    wordPool.splice(wordPool.indexOf(choice), 1);
+                }
+            });
+            showPuzzleTable();
+        }
+
+        function showPuzzleTable() {
+            const table = document.getElementById("puzzle-table");
+            table.innerHTML = "<tr>" + roundCategories.map(cat => `<th>${cat}</th>`).join("") + "</tr>";
+            for (let i = 0; i < players.length; i++) {
+                const row = roundCategories.map(cat => {
+                    const allWords = players.map(p => wordsByPlayer[p][cat]);
+                    return `<td>${allWords.sort(() => 0.5 - Math.random())[i]}</td>`;
+                }).join("");
+                table.innerHTML += `<tr>${row}</tr>`;
+            }
+            showScreen("puzzle-screen");
+        }
+
+        function revealAnswers() {
+            const table = document.getElementById("reveal-table");
+            table.innerHTML = "<tr><th>Spieler</th>" + roundCategories.map(cat => `<th>${cat}</th>`).join("") + "</tr>";
+            for (let p of players) {
+                const row = `<td>${p}</td>` + roundCategories.map(cat => `<td>${wordsByPlayer[p][cat]}</td>`).join("");
+                table.innerHTML += `<tr>${row}</tr>`;
+            }
+            showScreen("reveal-screen");
+        }
+
+        function showScreen(id) {
+            document.querySelectorAll(".screen").forEach(div => div.classList.remove("visible"));
+            document.getElementById(id).classList.add("visible");
+        }
+    </script>
+</body>
+</html>
